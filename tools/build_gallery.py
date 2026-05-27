@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 from collections import defaultdict
 
-REPO = Path("/root/git/simpsons-ops-archive")
+REPO = Path("/root/git/simpsons-against-devops")
 META = Path("/tmp/simpsonsops/metadata.tsv")
 PLAN = Path("/tmp/simpsonsops/all_classifications.tsv")
 
@@ -227,14 +227,13 @@ HTML.append("""<!doctype html>
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    text-decoration: none;
-    color: inherit;
     transition: transform 80ms ease, box-shadow 80ms ease;
   }}
   .card:hover {{
     transform: translateY(-2px);
     box-shadow: 0 4px 16px rgba(0,0,0,0.08);
   }}
+  .card .img-link {{ display: block; }}
   .card img {{
     width: 100%;
     height: auto;
@@ -242,12 +241,23 @@ HTML.append("""<!doctype html>
     background: #ddd;
   }}
   .card .cap {{
-    padding: 0.6rem 0.75rem;
+    padding: 0.6rem 0.75rem 0.75rem;
     font-size: 0.83rem;
     color: var(--muted);
     line-height: 1.35;
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
   }}
+  .card .cap .text {{ color: var(--muted); }}
+  .card .cap .tweet {{
+    color: var(--link);
+    text-decoration: none;
+    font-size: 0.78rem;
+    align-self: flex-start;
+  }}
+  .card .cap .tweet:hover {{ text-decoration: underline; }}
   footer {{
     padding: 2rem 1.5rem;
     max-width: 1400px;
@@ -293,13 +303,14 @@ for cat in cats_ordered:
     for fname, summary, img_id, tweet_link in sorted(gallery[cat]):
         src = f"{cat}/{fname}"
         cap = html.escape(summary)
+        HTML.append('    <div class="card">\n')
+        HTML.append(f'      <a class="img-link" href="{src}"><img src="{src}" loading="lazy" alt="{cap}"></a>\n')
+        HTML.append('      <div class="cap">\n')
+        HTML.append(f'        <span class="text">{cap}</span>\n')
         if tweet_link:
-            HTML.append(f'    <a class="card" href="{tweet_link}" target="_blank" rel="noopener">\n')
-        else:
-            HTML.append('    <div class="card">\n')
-        HTML.append(f'      <img src="{src}" loading="lazy" alt="{cap}">\n')
-        HTML.append(f'      <div class="cap">{cap}</div>\n')
-        HTML.append('    </a>\n' if tweet_link else '    </div>\n')
+            HTML.append(f'        <a class="tweet" href="{tweet_link}" target="_blank" rel="noopener">→ source tweet</a>\n')
+        HTML.append('      </div>\n')
+        HTML.append('    </div>\n')
     HTML.append('  </div>\n')
     HTML.append('</section>\n')
 
