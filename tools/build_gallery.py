@@ -15,6 +15,35 @@ from collections import defaultdict
 REPO = Path("/root/git/simpsons-against-devops")
 META = Path("/tmp/simpsonsops/metadata.tsv")
 PLAN = Path("/tmp/simpsonsops/all_classifications.tsv")
+TARGETS = Path("/tmp/simpsonsops/targets.tsv")
+
+
+def clean_tweet_text(text):
+    """Strip pic.twitter.com / mangled-URL / nbsp / ellipsis cruft from
+    Wayback-extracted tweet text. Returns a clean caption-friendly string."""
+    if not text:
+        return ""
+    # Strip mangled URLs like "https:// twitter.com/x/sta tus/123 &nbsp; …"
+    text = re.sub(r'https?://\s*twitter\.com.*?(?=&nbsp;|pic\.twitter\.com|$)',
+                  '', text, flags=re.S)
+    # Strip pic.twitter.com/... (media attachment ref, never useful)
+    text = re.sub(r'\s*pic\.twitter\.com/\S+', '', text)
+    # Strip any remaining bare URLs
+    text = re.sub(r'https?://\S+', '', text)
+    # Collapse leftover entities and whitespace
+    text = text.replace('&nbsp;', ' ').replace('&amp;', '&')
+    text = re.sub(r'\s*…\s*', ' ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
+# Load timestamp per status id so wayback links go straight to a snapshot
+status_ts = {}
+with TARGETS.open() as f:
+    for line in f:
+        parts = line.rstrip("\n").split("\t")
+        if len(parts) >= 2:
+            status_ts[parts[0]] = parts[1]
 
 # Reuse the slugger to map twitter id -> current filename
 MAX_LEN = 70
@@ -75,15 +104,23 @@ for cat_dir in REPO.iterdir():
             if f.is_file() and f.suffix.lower() in (".jpg", ".jpeg", ".png", ".gif", ".webp"):
                 existing.add(f"{cat_dir.name}/{f.name}")
 
-# Build per-category list of (filename, summary, img_id, tweet_link)
+# Build per-category list of (filename, summary, img_id, tweet_link, tweet_text)
 gallery = defaultdict(list)
 for img_id, (cat, fname, summary) in id_to_file.items():
     rel = f"{cat}/{fname}"
     if rel not in existing:
         continue
-    sid, _text = img_tweet.get(img_id, ("", ""))
-    tweet_link = f"https://web.archive.org/web/2022*/twitter.com/SimpsonsOps/status/{sid}" if sid else ""
-    gallery[cat].append((fname, summary, img_id, tweet_link))
+    sid, raw_text = img_tweet.get(img_id, ("", ""))
+    tweet_text = clean_tweet_text(raw_text)
+    if sid:
+        ts = status_ts.get(sid)
+        if ts:
+            tweet_link = f"https://web.archive.org/web/{ts}/https://twitter.com/SimpsonsOps/status/{sid}"
+        else:
+            tweet_link = f"https://web.archive.org/web/2/https://twitter.com/SimpsonsOps/status/{sid}"
+    else:
+        tweet_link = ""
+    gallery[cat].append((fname, summary, img_id, tweet_link, tweet_text))
 
 # Order categories: meta last, otherwise by count desc
 cats_ordered = sorted(gallery, key=lambda c: (c == "meta", -len(gallery[c]), c))
@@ -242,21 +279,30 @@ HTML.append("""<!doctype html>
     background: #ddd;
   }}
   .card .cap {{
-    padding: 0.6rem 0.75rem 0.75rem;
-    font-size: 0.83rem;
-    color: var(--muted);
-    line-height: 1.35;
+    padding: 0.65rem 0.8rem 0.8rem;
+    line-height: 1.4;
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 0.45rem;
   }}
-  .card .cap .text {{ color: var(--muted); }}
+  .card .cap .text {{
+    margin: 0;
+    font-size: 0.88rem;
+    color: var(--fg);
+  }}
+  .card .cap .sub {{
+    margin: 0;
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-style: italic;
+  }}
   .card .cap .tweet {{
     color: var(--link);
     text-decoration: none;
     font-size: 0.78rem;
     align-self: flex-start;
+    margin-top: auto;
   }}
   .card .cap .tweet:hover {{ text-decoration: underline; }}
   .lightbox {{
@@ -284,14 +330,21 @@ HTML.append("""<!doctype html>
   .lightbox .lb-cap {{
     margin: 0.85rem auto 0;
     text-align: center;
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     max-width: 80ch;
-    color: rgba(255, 255, 255, 0.85);
-    line-height: 1.4;
+    color: rgba(255, 255, 255, 0.92);
+    line-height: 1.45;
+  }}
+  .lightbox .lb-cap .lb-sub {{
+    display: block;
+    margin-top: 0.4rem;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.8rem;
+    font-style: italic;
   }}
   .lightbox .lb-cap a {{
     display: inline-block;
-    margin-top: 0.4rem;
+    margin-top: 0.55rem;
     color: #ffd900;
     text-decoration: none;
     font-size: 0.85rem;
@@ -354,13 +407,25 @@ for cat in cats_ordered:
     if blurb:
         HTML.append(f'  <p class="blurb">{html.escape(blurb)}</p>\n')
     HTML.append('  <div class="grid">\n')
-    for fname, summary, img_id, tweet_link in sorted(gallery[cat]):
+    for fname, summary, img_id, tweet_link, tweet_text in sorted(gallery[cat]):
         src = f"{cat}/{fname}"
-        cap = html.escape(summary)
+        alt = html.escape(summary)
+        # Primary caption is the tweet's own text; fall back to the vision
+        # summary when the account didn't write anything (image-only posts).
+        if tweet_text:
+            caption = html.escape(tweet_text)
+            sub = html.escape(summary)
+            caption_full = html.escape(tweet_text)
+        else:
+            caption = html.escape(summary)
+            sub = ""
+            caption_full = html.escape(summary)
         HTML.append('    <div class="card">\n')
-        HTML.append(f'      <a class="img-link" href="{src}"><img src="{src}" loading="lazy" alt="{cap}"></a>\n')
+        HTML.append(f'      <a class="img-link" href="{src}"><img src="{src}" loading="lazy" alt="{alt}"></a>\n')
         HTML.append('      <div class="cap">\n')
-        HTML.append(f'        <span class="text">{cap}</span>\n')
+        HTML.append(f'        <p class="text">{caption}</p>\n')
+        if sub:
+            HTML.append(f'        <p class="sub">{sub}</p>\n')
         if tweet_link:
             HTML.append(f'        <a class="tweet" href="{tweet_link}" target="_blank" rel="noopener">→ source tweet</a>\n')
         HTML.append('      </div>\n')
@@ -377,7 +442,8 @@ HTML.append(f"""<footer>
   <button class="close" type="button" aria-label="Close">&times;</button>
   <img id="lb-img" alt="">
   <div class="lb-cap">
-    <span id="lb-text"></span><br>
+    <span id="lb-text"></span>
+    <span class="lb-sub" id="lb-sub"></span>
     <a id="lb-tweet" target="_blank" rel="noopener">&rarr; source tweet</a>
   </div>
 </dialog>
@@ -387,6 +453,7 @@ HTML.append(f"""<footer>
   if (!dlg || !dlg.showModal) return;
   var img = document.getElementById('lb-img');
   var text = document.getElementById('lb-text');
+  var sub = document.getElementById('lb-sub');
   var tweet = document.getElementById('lb-tweet');
   document.querySelectorAll('.card').forEach(function(card) {{
     var link = card.querySelector('.img-link');
@@ -394,9 +461,16 @@ HTML.append(f"""<footer>
     link.addEventListener('click', function(e) {{
       e.preventDefault();
       img.src = link.getAttribute('href');
-      var txt = card.querySelector('.text').textContent;
-      img.alt = txt;
-      text.textContent = txt;
+      var primary = card.querySelector('.text');
+      var secondary = card.querySelector('.sub');
+      text.textContent = primary ? primary.textContent : '';
+      img.alt = text.textContent;
+      if (secondary && secondary.textContent.trim()) {{
+        sub.textContent = secondary.textContent;
+        sub.style.display = '';
+      }} else {{
+        sub.style.display = 'none';
+      }}
       var t = card.querySelector('.tweet');
       if (t) {{
         tweet.href = t.href;
