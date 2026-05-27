@@ -118,7 +118,8 @@ HTML.append("""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Simpsons Against DevOps — image archive</title>
-<meta name="description" content="Archive of {total} Simpsons memes from the deleted @SimpsonsOps Twitter account, sorted by topic.">
+<meta name="description" content="{total} Simpsons memes from the deleted @SimpsonsOps Twitter account, sorted into folders.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%23ffd900'/%3E%3Ctext x='50' y='75' text-anchor='middle' font-family='Helvetica,Arial,sans-serif' font-weight='900' font-size='78' fill='%23000'%3ES%3C/text%3E%3C/svg%3E">
 <style>
   :root {{
     color-scheme: light dark;
@@ -258,6 +259,58 @@ HTML.append("""<!doctype html>
     align-self: flex-start;
   }}
   .card .cap .tweet:hover {{ text-decoration: underline; }}
+  .lightbox {{
+    border: none;
+    padding: 0;
+    background: transparent;
+    max-width: none;
+    max-height: none;
+    margin: auto;
+    color: #fff;
+    overflow: visible;
+  }}
+  .lightbox::backdrop {{
+    background: rgba(0, 0, 0, 0.92);
+    backdrop-filter: blur(4px);
+  }}
+  .lightbox img {{
+    display: block;
+    max-width: 92vw;
+    max-height: 82vh;
+    margin: 0 auto;
+    border-radius: 4px;
+    background: #222;
+  }}
+  .lightbox .lb-cap {{
+    margin: 0.85rem auto 0;
+    text-align: center;
+    font-size: 0.9rem;
+    max-width: 80ch;
+    color: rgba(255, 255, 255, 0.85);
+    line-height: 1.4;
+  }}
+  .lightbox .lb-cap a {{
+    display: inline-block;
+    margin-top: 0.4rem;
+    color: #ffd900;
+    text-decoration: none;
+    font-size: 0.85rem;
+  }}
+  .lightbox .lb-cap a:hover {{ text-decoration: underline; }}
+  .lightbox .close {{
+    position: fixed;
+    top: 0.75rem;
+    right: 1rem;
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 2.2rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0.25rem 0.6rem;
+    opacity: 0.7;
+  }}
+  .lightbox .close:hover {{ opacity: 1; }}
   footer {{
     padding: 2rem 1.5rem;
     max-width: 1400px;
@@ -273,14 +326,15 @@ HTML.append("""<!doctype html>
 <header>
   <h1>Simpsons Against <span class="yellow">DevOps</span></h1>
   <p class="lede">
-    Image archive of <strong>{total}</strong> Simpsons memes from the deleted
-    <a href="https://web.archive.org/web/2022*/twitter.com/SimpsonsOps">@SimpsonsOps</a>
-    Twitter account, recovered from the Wayback Machine and sorted by topic.
-    The creator is now on Bluesky at
+    <strong>{total}</strong> Simpsons memes by
     <a href="https://bsky.app/profile/simpsonsops.dev">@simpsonsops.dev</a>.
+    The original
+    <a href="https://web.archive.org/web/2022*/twitter.com/SimpsonsOps">@SimpsonsOps</a>
+    Twitter account got nuked post-Musk, so these came out of the Wayback
+    Machine and got sorted into folders by topic.
   </p>
   <div class="quote">
-    Posted with permission. From a 2021 DM:<br>
+    From a DM with the creator, May 2021:<br>
     <strong>Me:</strong> Would you object to a github repo containing all the images within themed folders?<br>
     <strong>Them:</strong> Definitely feel free to set up a GitHub repo though. I'd only ask that the images also link back to any relevant tweets if it's not too much of a hassle.
   </div>
@@ -315,11 +369,52 @@ for cat in cats_ordered:
     HTML.append('</section>\n')
 
 HTML.append(f"""<footer>
-  Reconstructed from Wayback Machine snapshots of every archived
-  <code>@SimpsonsOps</code> tweet. {total} Simpsons-only images across
-  {len(cats_ordered)} categories. Source: <a href="https://github.com/fenneh/simpsons-ops-archive">github.com/fenneh/simpsons-ops-archive</a>.
-  All images by <a href="https://bsky.app/profile/simpsonsops.dev">@simpsonsops.dev</a>.
+  {total} images across {len(cats_ordered)} folders. Images by
+  <a href="https://bsky.app/profile/simpsonsops.dev">@simpsonsops.dev</a>.
+  Repo: <a href="https://github.com/fenneh/simpsons-against-devops">github.com/fenneh/simpsons-against-devops</a>.
 </footer>
+<dialog id="lb" class="lightbox" aria-label="Image viewer">
+  <button class="close" type="button" aria-label="Close">&times;</button>
+  <img id="lb-img" alt="">
+  <div class="lb-cap">
+    <span id="lb-text"></span><br>
+    <a id="lb-tweet" target="_blank" rel="noopener">&rarr; source tweet</a>
+  </div>
+</dialog>
+<script>
+(function() {{
+  var dlg = document.getElementById('lb');
+  if (!dlg || !dlg.showModal) return;
+  var img = document.getElementById('lb-img');
+  var text = document.getElementById('lb-text');
+  var tweet = document.getElementById('lb-tweet');
+  document.querySelectorAll('.card').forEach(function(card) {{
+    var link = card.querySelector('.img-link');
+    if (!link) return;
+    link.addEventListener('click', function(e) {{
+      e.preventDefault();
+      img.src = link.getAttribute('href');
+      var txt = card.querySelector('.text').textContent;
+      img.alt = txt;
+      text.textContent = txt;
+      var t = card.querySelector('.tweet');
+      if (t) {{
+        tweet.href = t.href;
+        tweet.style.display = '';
+      }} else {{
+        tweet.style.display = 'none';
+      }}
+      dlg.showModal();
+    }});
+  }});
+  dlg.addEventListener('click', function(e) {{
+    if (e.target === dlg) dlg.close();
+  }});
+  document.querySelector('.lightbox .close').addEventListener('click', function() {{
+    dlg.close();
+  }});
+}})();
+</script>
 </body>
 </html>
 """)
