@@ -1,0 +1,10 @@
+.DS_Store
+*.pyc
+__pycache__/
+tools/cdx_*.json
+tools/targets.tsv
+tools/extracted.tsv
+tools/metadata.tsv
+tools/failed.tsv
+tools/img_failed.tsv
+tools/phase*.log
